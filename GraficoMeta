@@ -1,0 +1,174 @@
+from dataclasses import replace
+import win32com.client
+import pandas as pd
+import datetime
+import tkinter
+from tkinter import *
+from tkinter import ttk
+from time import sleep
+from tkinter import messagebox
+
+#from cerebro import burrice
+#from felicidade import animes
+#from darling_in_the_franxx import final_bom     #POSSIVEL DAR ERRO ESSA LINHA EM
+
+def atualizarPowerPoint(valorAtingido, valorRestante, valorMeta, mes, metaString):
+    
+    if valorAtingido > valorRestante: #caso a meta seja ultrapassada
+        valorSobrando = valorAtingido - valorMeta
+        excel.Range("B2").Value = valorAtingido
+        excel.Range("A2").Value = "Valor Atingido" #valorAtingido toma posição no grafico do valorRestante  
+        excel.Range("B3").Value = valorSobrando
+        excel.Range("A3").Value = "Valor Sobrando" #valorSobrando toma posição do ValorAtingido
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.ChartTitle.Text = "Meta " + mes + ": " +metaString + " ✓" #meta com check
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.SeriesCollection(1).Points(2).Format.Fill.ForeColor.RGB = 5287936 #verde no valor sobrando
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.SeriesCollection(1).Points(1).Format.Fill.ForeColor.RGB = 683236 #laranja no valor atingido
+        
+        powerpoint.ActivePresentation.Save()    
+    else:
+        excel.Range("B2").Value = valorRestante
+        excel.Range("A2").Value = "Valor Restante"
+        excel.Range("B3").Value = valorAtingido
+        excel.Range("A3").Value = "Valor Atingido"
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.ChartTitle.Text = "Meta " + mes + ": " +metaString
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.SeriesCollection(1).Points(2).Format.Fill.ForeColor.RGB = 683236 #laranja no valor atingido
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.SeriesCollection(1).Points(1).Format.Fill.ForeColor.RGB = 8355711 #cinza no valor restante
+        
+        powerpoint.ActivePresentation.Save()
+    
+def criarPowerPoint():
+    global powerpoint
+    powerpoint = win32com.client.Dispatch("PowerPoint.Application") #cria powerpoint application
+    powerpoint.Visible = True 
+    powerpoint.Presentations.Open(r'N:\- Engenharia de Produtos\Gerenciamento Engenharia de Produto\ApresentacaoTV.pptx')
+
+    if powerpoint.ActivePresentation.ReadOnly == -1: #se está em read only ele fecha tudo e para o programa
+        tkinter.messagebox.showerror(title='Erro', message='PowerPoint já está ativo, após clicar em OK todos PowerPoints abertos seráo fechados. Certifique-se de salvar caso necessário.')
+        powerpoint.Quit()
+        exit()
+    else:
+        #powerpoint.ActivePresentation.SlideShowSettings.Run() #inicia apresentação de slides
+        powerpoint.ActivePresentation.Slides(1).Shapes('graficoMeta').Chart.ChartData.Activate() #ativa excel que troca valores do grafico
+        global excel 
+        excel = win32com.client.GetActiveObject ("Excel.Application") #Pega o excel ativo que troca os valores do grafico, mantem aberto e invisivel
+        excel.Visible = False
+
+def atualizarValores(mesNum, mes, ano, meta):
+    excel = pd.read_excel(r'N:\- Engenharia de Produtos\Controle Engenharia rev 02.xlsm') #cria leitura do arquivo excel
+
+    datas = list(excel['ENTREGA PCP']) #cria lista de elementos com certo titulo
+    valores =  list(excel['VALOR'])
+    
+#-----------------------------------filtrar quantidade de dias por mesNum------------------------------#
+    diaF = 0
+    if mesNum == 1 or mesNum == 3 or mesNum == 5 or mesNum == 8 or mesNum == 10 or mesNum == 12:
+        diaF=31
+    elif mesNum == 4 or mesNum == 6 or mesNum == 7 or mesNum == 9 or mesNum == 11:
+        diaF=30
+    elif mesNum == 2 and ano%4==0:
+        diaF=29
+    else:
+        diaF=28
+#-----------------------------------------------------------------------------------------------------#
+    dataInicial = datetime.datetime(ano, mesNum, 1, 0, 0)
+    dataFinal = datetime.datetime(ano, mesNum, diaF, 0, 0)
+
+    valorMeta = meta
+    valorAtingido = 0
+
+    indicesDatas=[]
+    for i in range(len(datas)): #para cada i(indice) no range da lenght de datas:
+        if isinstance(datas[i], datetime.datetime): #testar se é datetime (pois tem uns "OK" na planilha)
+            if datas[i] >= dataInicial and datas[i] <= dataFinal: #testar se as datas condizem
+                indicesDatas.append(i) #adicionar o indice das datas condizentes numa outra list
+
+    for indice in indicesDatas:
+        if pd.notnull(valores[indice]): #remover valores nulos
+            valorAtingido = valorAtingido + valores[indice] #somar
+
+    
+    valorRestante = valorMeta - valorAtingido
+    metaString = str('R${:,.2f}'.format(valorMeta))
+    metaStringAux = metaString.replace(',', 'v')
+    metaString = metaStringAux.replace('.', ',')
+    metaString = metaString.replace('v', '.')
+    print(valorRestante)
+    print(valorAtingido)    
+    print(metaString)
+         
+    atualizarPowerPoint(valorAtingido=valorAtingido, valorRestante=valorRestante, valorMeta=valorMeta, mes=mes, metaString=metaString)
+#---------------------------------------------------------------------------------------------------------------------------------------------------#    
+
+def criarValores():
+    
+    mesNum = int(mesBox.current()+1)
+    
+    mes = (mesBox.get())
+    
+    ano = int(anosBox.get())
+    
+    meta = float(metaBox.get())
+    
+    window.destroy()
+    
+    criarPowerPoint() 
+
+    loop = True
+    while loop == True:
+        atualizarValores(mesNum=mesNum, mes=mes, ano=ano, meta=meta) #looping para atualizar o grafico a cada x segundos
+        sleep(3600)
+#--------------------------------------------------------------------------------------------------------------------#  
+
+def main():
+#---------------------------------CRIA INTERFACE GRAFICA----------------------------------------------------------------------------------------------#    
+    global window
+    window = Tk() #janela onde aparece tudo
+    window.title("Gráfico Meta Engenharia")
+    window.columnconfigure(0, weight=1)
+    window.columnconfigure(1, weight=3)
+    window.geometry("320x125")
+    window.resizable(0, 0)
+#----------------------------------------------BOTAO DE MES------------------------------------------------------------------------#
+    mesTexto = Label(window, text="Mês:")
+    mesTexto.grid(column=0, row=0) 
+    global mesEscolhido
+    mesEscolhido = tkinter.IntVar() #valor que pode ser retornado com .current()
+    meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    global mesBox
+    mesBox = ttk.Combobox(window, textvariable=mesEscolhido, values=meses)#caixa lista de escolhas dos meses
+    mesBox.grid(column=1, row=0, padx=5, pady=5)
+    
+#----------------------------------------------------------------------------------------------------------------------------------#
+    
+#----------------------------------------------BOTAO DE ANO------------------------------------------------------------------------#
+    anoTexto = Label(window, text="Ano:")
+    anoTexto.grid(column=0, row=1)
+    global anoEscolhido
+    anoEscolhido = tkinter.IntVar() #valor que pode ser retornado com .get()
+    anos = ['2018', '2019', '2020', '2021', '2022']
+    global anosBox
+    anosBox = ttk.Combobox(window, textvariable=anoEscolhido, values=anos)#caixa lista de escolhas dos anos
+    anosBox.grid(column=1, row=1, padx=5, pady=5)
+#----------------------------------------------------------------------------------------------------------------------------------#
+    
+#-----------------------------------------INPUT BOX DE VALOR META------------------------------------------------------------------#
+    metaTexto = Label(window, text="Meta:")
+    metaTexto.grid(column=0, row=2)
+    global metaEscolhido 
+    metaEscolhido = tkinter.DoubleVar()#valor que pode ser retornado com .get()
+    global metaBox
+    metaBox = ttk.Entry(window, textvariable=metaEscolhido)
+    metaBox.grid(column=1, row=2, padx=5, pady=5)
+#----------------------------------------------------------------------------------------------------------------------------------# 
+
+#-----------------------------------------BOTAO SUBMIT-----------------------------------------------------------------------------#
+    botao = Button(window, text='Criar', width=10, command=criarValores)
+    botao.grid(column=1, row=3, sticky=E, padx=5)
+#----------------------------------------------------------------------------------------------------------------------------------#
+    window.mainloop()
+#-------------------------------------------------------------------------------------------------------------------------------------------------#
+
+if __name__ == "__main__":
+    main()
+
+
